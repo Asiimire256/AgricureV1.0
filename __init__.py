@@ -1,222 +1,220 @@
-# don't import any costly modules
+# Copyright 2017 The Abseil Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""This package is used to define and parse command line flags.
+
+This package defines a *distributed* flag-definition policy: rather than
+an application having to define all flags in or near main(), each Python
+module defines flags that are useful to it.  When one Python module
+imports another, it gains access to the other's flags.  (This is
+implemented by having all modules share a common, global registry object
+containing all the flag information.)
+
+Flags are defined through the use of one of the DEFINE_xxx functions.
+The specific function used determines how the flag is parsed, checked,
+and optionally type-converted, when it's seen on the command line.
+"""
+
 import sys
-import os
 
+from absl.flags import _argument_parser
+from absl.flags import _defines
+from absl.flags import _exceptions
+from absl.flags import _flag
+from absl.flags import _flagvalues
+from absl.flags import _helpers
+from absl.flags import _validators
 
-is_pypy = '__pypy__' in sys.builtin_module_names
+__all__ = (
+    'DEFINE',
+    'DEFINE_flag',
+    'DEFINE_string',
+    'DEFINE_boolean',
+    'DEFINE_bool',
+    'DEFINE_float',
+    'DEFINE_integer',
+    'DEFINE_enum',
+    'DEFINE_enum_class',
+    'DEFINE_list',
+    'DEFINE_spaceseplist',
+    'DEFINE_multi',
+    'DEFINE_multi_string',
+    'DEFINE_multi_integer',
+    'DEFINE_multi_float',
+    'DEFINE_multi_enum',
+    'DEFINE_multi_enum_class',
+    'DEFINE_alias',
+    # Flag validators.
+    'register_validator',
+    'validator',
+    'register_multi_flags_validator',
+    'multi_flags_validator',
+    'mark_flag_as_required',
+    'mark_flags_as_required',
+    'mark_flags_as_mutual_exclusive',
+    'mark_bool_flags_as_mutual_exclusive',
+    # Flag modifiers.
+    'set_default',
+    'override_value',
+    # Key flag related functions.
+    'declare_key_flag',
+    'adopt_module_key_flags',
+    'disclaim_key_flags',
+    # Module exceptions.
+    'Error',
+    'CantOpenFlagFileError',
+    'DuplicateFlagError',
+    'IllegalFlagValueError',
+    'UnrecognizedFlagError',
+    'UnparsedFlagAccessError',
+    'ValidationError',
+    'FlagNameConflictsWithMethodError',
+    # Public classes.
+    'Flag',
+    'BooleanFlag',
+    'EnumFlag',
+    'EnumClassFlag',
+    'MultiFlag',
+    'MultiEnumClassFlag',
+    'FlagHolder',
+    'FlagValues',
+    'ArgumentParser',
+    'BooleanParser',
+    'EnumParser',
+    'EnumClassParser',
+    'ArgumentSerializer',
+    'FloatParser',
+    'IntegerParser',
+    'BaseListParser',
+    'ListParser',
+    'ListSerializer',
+    'EnumClassListSerializer',
+    'CsvListSerializer',
+    'WhitespaceSeparatedListParser',
+    'EnumClassSerializer',
+    # Helper functions.
+    'get_help_width',
+    'text_wrap',
+    'flag_dict_to_args',
+    'doc_to_help',
+    # The global FlagValues instance.
+    'FLAGS',
+)
 
+# Initialize the FLAGS_MODULE as early as possible.
+# It's only used by adopt_module_key_flags to take SPECIAL_FLAGS into account.
+_helpers.FLAGS_MODULE = sys.modules[__name__]
 
-def warn_distutils_present():
-    if 'distutils' not in sys.modules:
-        return
-    if is_pypy and sys.version_info < (3, 7):
-        # PyPy for 3.6 unconditionally imports distutils, so bypass the warning
-        # https://foss.heptapod.net/pypy/pypy/-/blob/be829135bc0d758997b3566062999ee8b23872b4/lib-python/3/site.py#L250
-        return
-    import warnings
+# Add current module to disclaimed module ids.
+_helpers.disclaim_module_ids.add(id(sys.modules[__name__]))
 
-    warnings.warn(
-        "Distutils was imported before Setuptools, but importing Setuptools "
-        "also replaces the `distutils` module in `sys.modules`. This may lead "
-        "to undesirable behaviors or errors. To avoid these issues, avoid "
-        "using distutils directly, ensure that setuptools is installed in the "
-        "traditional way (e.g. not an editable install), and/or make sure "
-        "that setuptools is always imported before distutils."
-    )
+# DEFINE functions. They are explained in more details in the module doc string.
+# pylint: disable=invalid-name
+DEFINE = _defines.DEFINE
+DEFINE_flag = _defines.DEFINE_flag
+DEFINE_string = _defines.DEFINE_string
+DEFINE_boolean = _defines.DEFINE_boolean
+DEFINE_bool = DEFINE_boolean  # Match C++ API.
+DEFINE_float = _defines.DEFINE_float
+DEFINE_integer = _defines.DEFINE_integer
+DEFINE_enum = _defines.DEFINE_enum
+DEFINE_enum_class = _defines.DEFINE_enum_class
+DEFINE_list = _defines.DEFINE_list
+DEFINE_spaceseplist = _defines.DEFINE_spaceseplist
+DEFINE_multi = _defines.DEFINE_multi
+DEFINE_multi_string = _defines.DEFINE_multi_string
+DEFINE_multi_integer = _defines.DEFINE_multi_integer
+DEFINE_multi_float = _defines.DEFINE_multi_float
+DEFINE_multi_enum = _defines.DEFINE_multi_enum
+DEFINE_multi_enum_class = _defines.DEFINE_multi_enum_class
+DEFINE_alias = _defines.DEFINE_alias
+# pylint: enable=invalid-name
 
+# Flag validators.
+register_validator = _validators.register_validator
+validator = _validators.validator
+register_multi_flags_validator = _validators.register_multi_flags_validator
+multi_flags_validator = _validators.multi_flags_validator
+mark_flag_as_required = _validators.mark_flag_as_required
+mark_flags_as_required = _validators.mark_flags_as_required
+mark_flags_as_mutual_exclusive = _validators.mark_flags_as_mutual_exclusive
+mark_bool_flags_as_mutual_exclusive = _validators.mark_bool_flags_as_mutual_exclusive
 
-def clear_distutils():
-    if 'distutils' not in sys.modules:
-        return
-    import warnings
+# Flag modifiers.
+set_default = _defines.set_default
+override_value = _defines.override_value
 
-    warnings.warn("Setuptools is replacing distutils.")
-    mods = [
-        name
-        for name in sys.modules
-        if name == "distutils" or name.startswith("distutils.")
-    ]
-    for name in mods:
-        del sys.modules[name]
+# Key flag related functions.
+declare_key_flag = _defines.declare_key_flag
+adopt_module_key_flags = _defines.adopt_module_key_flags
+disclaim_key_flags = _defines.disclaim_key_flags
 
+# Module exceptions.
+# pylint: disable=invalid-name
+Error = _exceptions.Error
+CantOpenFlagFileError = _exceptions.CantOpenFlagFileError
+DuplicateFlagError = _exceptions.DuplicateFlagError
+IllegalFlagValueError = _exceptions.IllegalFlagValueError
+UnrecognizedFlagError = _exceptions.UnrecognizedFlagError
+UnparsedFlagAccessError = _exceptions.UnparsedFlagAccessError
+ValidationError = _exceptions.ValidationError
+FlagNameConflictsWithMethodError = _exceptions.FlagNameConflictsWithMethodError
 
-def enabled():
-    """
-    Allow selection of distutils by environment variable.
-    """
-    which = os.environ.get('SETUPTOOLS_USE_DISTUTILS', 'local')
-    return which == 'local'
+# Public classes.
+Flag = _flag.Flag
+BooleanFlag = _flag.BooleanFlag
+EnumFlag = _flag.EnumFlag
+EnumClassFlag = _flag.EnumClassFlag
+MultiFlag = _flag.MultiFlag
+MultiEnumClassFlag = _flag.MultiEnumClassFlag
+FlagHolder = _flagvalues.FlagHolder
+FlagValues = _flagvalues.FlagValues
+ArgumentParser = _argument_parser.ArgumentParser
+BooleanParser = _argument_parser.BooleanParser
+EnumParser = _argument_parser.EnumParser
+EnumClassParser = _argument_parser.EnumClassParser
+ArgumentSerializer = _argument_parser.ArgumentSerializer
+FloatParser = _argument_parser.FloatParser
+IntegerParser = _argument_parser.IntegerParser
+BaseListParser = _argument_parser.BaseListParser
+ListParser = _argument_parser.ListParser
+ListSerializer = _argument_parser.ListSerializer
+EnumClassListSerializer = _argument_parser.EnumClassListSerializer
+CsvListSerializer = _argument_parser.CsvListSerializer
+WhitespaceSeparatedListParser = _argument_parser.WhitespaceSeparatedListParser
+EnumClassSerializer = _argument_parser.EnumClassSerializer
+# pylint: enable=invalid-name
 
+# Helper functions.
+get_help_width = _helpers.get_help_width
+text_wrap = _helpers.text_wrap
+flag_dict_to_args = _helpers.flag_dict_to_args
+doc_to_help = _helpers.doc_to_help
 
-def ensure_local_distutils():
-    import importlib
+# Special flags.
+_helpers.SPECIAL_FLAGS = FlagValues()
 
-    clear_distutils()
+DEFINE_string(
+    'flagfile', '',
+    'Insert flag definitions from the given file into the command line.',
+    _helpers.SPECIAL_FLAGS)  # pytype: disable=wrong-arg-types
 
-    # With the DistutilsMetaFinder in place,
-    # perform an import to cause distutils to be
-    # loaded from setuptools._distutils. Ref #2906.
-    with shim():
-        importlib.import_module('distutils')
+DEFINE_string('undefok', '',
+              'comma-separated list of flag names that it is okay to specify '
+              'on the command line even if the program does not define a flag '
+              'with that name.  IMPORTANT: flags in this list that have '
+              'arguments MUST use the --flag=value format.',
+              _helpers.SPECIAL_FLAGS)  # pytype: disable=wrong-arg-types
 
-    # check that submodules load as expected
-    core = importlib.import_module('distutils.core')
-    assert '_distutils' in core.__file__, core.__file__
-    assert 'setuptools._distutils.log' not in sys.modules
-
-
-def do_override():
-    """
-    Ensure that the local copy of distutils is preferred over stdlib.
-
-    See https://github.com/pypa/setuptools/issues/417#issuecomment-392298401
-    for more motivation.
-    """
-    if enabled():
-        warn_distutils_present()
-        ensure_local_distutils()
-
-
-class _TrivialRe:
-    def __init__(self, *patterns):
-        self._patterns = patterns
-
-    def match(self, string):
-        return all(pat in string for pat in self._patterns)
-
-
-class DistutilsMetaFinder:
-    def find_spec(self, fullname, path, target=None):
-        # optimization: only consider top level modules and those
-        # found in the CPython test suite.
-        if path is not None and not fullname.startswith('test.'):
-            return
-
-        method_name = 'spec_for_{fullname}'.format(**locals())
-        method = getattr(self, method_name, lambda: None)
-        return method()
-
-    def spec_for_distutils(self):
-        if self.is_cpython():
-            return
-
-        import importlib
-        import importlib.abc
-        import importlib.util
-
-        try:
-            mod = importlib.import_module('setuptools._distutils')
-        except Exception:
-            # There are a couple of cases where setuptools._distutils
-            # may not be present:
-            # - An older Setuptools without a local distutils is
-            #   taking precedence. Ref #2957.
-            # - Path manipulation during sitecustomize removes
-            #   setuptools from the path but only after the hook
-            #   has been loaded. Ref #2980.
-            # In either case, fall back to stdlib behavior.
-            return
-
-        class DistutilsLoader(importlib.abc.Loader):
-            def create_module(self, spec):
-                mod.__name__ = 'distutils'
-                return mod
-
-            def exec_module(self, module):
-                pass
-
-        return importlib.util.spec_from_loader(
-            'distutils', DistutilsLoader(), origin=mod.__file__
-        )
-
-    @staticmethod
-    def is_cpython():
-        """
-        Suppress supplying distutils for CPython (build and tests).
-        Ref #2965 and #3007.
-        """
-        return os.path.isfile('pybuilddir.txt')
-
-    def spec_for_pip(self):
-        """
-        Ensure stdlib distutils when running under pip.
-        See pypa/pip#8761 for rationale.
-        """
-        if self.pip_imported_during_build():
-            return
-        clear_distutils()
-        self.spec_for_distutils = lambda: None
-
-    @classmethod
-    def pip_imported_during_build(cls):
-        """
-        Detect if pip is being imported in a build script. Ref #2355.
-        """
-        import traceback
-
-        return any(
-            cls.frame_file_is_setup(frame) for frame, line in traceback.walk_stack(None)
-        )
-
-    @staticmethod
-    def frame_file_is_setup(frame):
-        """
-        Return True if the indicated frame suggests a setup.py file.
-        """
-        # some frames may not have __file__ (#2940)
-        return frame.f_globals.get('__file__', '').endswith('setup.py')
-
-    def spec_for_sensitive_tests(self):
-        """
-        Ensure stdlib distutils when running select tests under CPython.
-
-        python/cpython#91169
-        """
-        clear_distutils()
-        self.spec_for_distutils = lambda: None
-
-    sensitive_tests = (
-        [
-            'test.test_distutils',
-            'test.test_peg_generator',
-            'test.test_importlib',
-        ]
-        if sys.version_info < (3, 10)
-        else [
-            'test.test_distutils',
-        ]
-    )
-
-
-for name in DistutilsMetaFinder.sensitive_tests:
-    setattr(
-        DistutilsMetaFinder,
-        f'spec_for_{name}',
-        DistutilsMetaFinder.spec_for_sensitive_tests,
-    )
-
-
-DISTUTILS_FINDER = DistutilsMetaFinder()
-
-
-def add_shim():
-    DISTUTILS_FINDER in sys.meta_path or insert_shim()
-
-
-class shim:
-    def __enter__(self):
-        insert_shim()
-
-    def __exit__(self, exc, value, tb):
-        remove_shim()
-
-
-def insert_shim():
-    sys.meta_path.insert(0, DISTUTILS_FINDER)
-
-
-def remove_shim():
-    try:
-        sys.meta_path.remove(DISTUTILS_FINDER)
-    except ValueError:
-        pass
+#: The global FlagValues instance.
+FLAGS = _flagvalues.FLAGS
